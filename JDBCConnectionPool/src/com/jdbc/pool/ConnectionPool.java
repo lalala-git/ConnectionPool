@@ -8,6 +8,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 获取连接：锁住proxy，保证一个连接只能被一个open获取
@@ -59,8 +60,9 @@ public class ConnectionPool {
     public Connection open() throws InterruptedException, ConnectionPoolException, SQLException {
         int second = 0;
         ok: while(true) {
-            //获取connection连接
-            for (ConnectionProxy connectionProxy : connectionPool) {
+            //获取connection连接，不能通过迭代器获取，modCount
+            for (int i = 0; i < connectionPool.size(); i ++) {
+                ConnectionProxy connectionProxy = connectionPool.get(i);
                 if (connectionProxy.isUsing()) continue;
                 synchronized (connectionProxy) {
                     if (!connectionProxy.isUsing()) {
@@ -105,12 +107,10 @@ public class ConnectionPool {
                 if (connectionPool.size() > CORE_CONNECTION_COUNT) {
                     //判断是否回收
                     int using = 0;
-                    synchronized (connectionPool) {
-                        //modCount防止fast-fail触发，锁
-                        for (ConnectionProxy connectionProxy : connectionPool) {
-                            if (connectionProxy.isUsing()) {
-                                using++;
-                            }
+                    for (int i = 0; i < connectionPool.size(); i ++) {
+                        ConnectionProxy connectionProxy = connectionPool.get(i);
+                        if (connectionProxy.isUsing()) {
+                            using++;
                         }
                     }
                     //触发回收机制
